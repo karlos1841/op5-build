@@ -1,0 +1,216 @@
+#!/usr/bin/perl
+# $Id: check_disk_v2 30 2013-03-18 10:25:06Z emcabuild $
+# $Rev: 30 $
+# $Author: emcabuild $
+# $Date: 2013-03-18 11:25:06 +0100 (Mon, 18 Mar 2013) $
+# $HeadURL: $
+# 
+
+
+# use strict;
+use lib "/opt/plugins";
+use utils qw (%ERRORS $TIMEOUT);
+use Getopt::Long;
+use Data::Dumper;
+
+$ENVPATH = $ENV{'PATH'};
+$ENV{'PATH'} = '/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:';
+
+my $RETURN ="5";
+my @ret;
+my @line;
+my ($opt_h, $opt_w, $opt_c,$opt_C,$opt_s, $opt_debug);
+
+Getopt::Long::Configure("bundling");
+$result=GetOptions(
+        "h" => \$opt_h, "help" => \$opt_h,
+        "p=s" => \$opt_p, "partitions=s" => \$opt_p,
+		"t=s" => \$opt_t, "type=s" => \$opt_t,
+        "w=f" => \$opt_w, "warning=f" => \$opt_w,
+        "c=f" => \$opt_c, "critical=f" => \$opt_c,
+	"d" => \$opt_debug, "debug" => \$opt_debug);
+
+
+if(! $result) {
+        exit $ERRORS{'UNKNOWN'};
+}
+
+if ( $opt_h ) {
+        print_help();
+        exit $ERRORS{'OK'};
+}
+
+
+$SIG{ALRM} = sub { die "timeout" };
+
+eval {
+	alarm(5);
+	my $cmd = "sudo /opt/plugins/check_disk -w 0 -c 0 -m -p $opt_p";
+	$_ = `$cmd`;
+	alarm(0);
+};
+
+$return=$_;
+
+if ($return !~ $opt_p) {
+	printf "Mount point %s not exists or is a directory", %s;
+	exit $ERRORS{'CRITICAL'};
+}
+
+@all = split("\\|",$return);
+@info =split(/:/,@all[0]);
+@partitions =split(/;/,@info[1]);
+
+$number_of_partitions=scalar(@partitions);
+
+for ($i=0;$i<$number_of_partitions;$i++)	{
+	@line=split(" ",@partitions[$i]);
+
+	$partitions_name=@line[0];
+
+	if ($opt_p eq $partitions_name){
+		$freeproc=substr(@line[3],1);
+		@temp=split("%",$freeproc);
+		$freeproc=@temp[0];
+		$freespace=@line[1];
+	
+		if ($freeproc eq '0')	{
+
+			$tmp = @all[1];
+			if($tmp =~ m/=(\d+)MB/) {
+				$totalspace=$1;
+			}
+			$usedspace=$totalspace;$usedproctemp=0;$usedproc=100;
+		}
+	
+		if ($freeproc gt '0'){
+			 
+			$totalspace=int(($freespace/$freeproc)*100);
+			$usedspace=$totalspace-$freespace;
+			$usedproctemp=($usedspace/$totalspace)*100;
+			$usedproc=sprintf("%.f", $usedproctemp);
+
+		}
+
+		$metric=@line[2];
+
+		printf "totalspace:%s freespace:%s freeproc:%s usedspace:%s usedproc:%s\n", $totalspace, $freespace, $freeproc, $usedspace, $usedproc if(defined($opt_debug));
+
+		if ($opt_t eq 'freespace') {
+			if ($freespace <= $opt_c){
+				print "Disk CRITICAL - free space: $partitions_name = $freespace $metric (free $freespace$metric, total $totalspace$metric) |$partitions_name=$freespace$metric;$opt_w;$opt_c;0;$totalspace\n";
+				exit 2;
+			}
+
+            	if ($freespace <= $opt_w) {
+            		print "Disk WARNING - free space: $partitions_name = $freespace $metric (free $freespace$metric, total $totalspace$metric) |$partitions_name=$freespace$metric;$opt_w;$opt_c;0;$totalspace\n";
+
+            		exit 1;
+            	}
+
+            if ($freespace > $opt_w)
+            {
+            print "Disk OK - free space: $partitions_name = $freespace $metric (free $freespace$metric, total $totalspace$metric) |$partitions_name=$freespace$metric;$opt_w;$opt_c;0;$totalspace\n";
+            exit 0;
+            }
+
+		}
+		if ($opt_t eq 'freeproc')
+        {
+            if ($freeproc <= $opt_c)
+            {
+            print "Disk CRITICAL - free %: $partitions_name = $freeproc % (free $freespace$metric, total $totalspace$metric) |$partitions_name=$freeproc\%;$opt_w;$opt_c;0;100\n";
+            exit 2;
+            }
+
+            if ($freeproc <= $opt_w)
+            {
+            print "Disk WARNING - free %: $partitions_name = $freeproc % (free $freespace$metric, total $totalspace$metric) |$partitions_name=$freeproc\%;$opt_w;$opt_c;0;100\n";
+            exit 1;
+            }
+
+            if ($freeproc > $opt_w)
+            {
+            print "Disk OK - free %: $partitions_name = $freeproc % (free $freespace$metric, total $totalspace$metric) |$partitions_name=$freeproc\%;$opt_w;$opt_c;0;100\n";
+            exit 0;
+            }
+
+        }
+
+        if ($opt_t eq 'usedspace')
+        {
+            if ($usedspace >= $opt_c)
+            {
+            print "Disk CRITICAL - used space: $partitions_name = $usedspace $metric (used $usedspace$metric, total $totalspace$metric)|$partitions_name=$usedspace$metric;$opt_w;$opt_c;0;$totalspace\n";
+            exit 2;
+            }
+
+            if ($usedspace >= $opt_w)
+            {
+            print "Disk WARNING - used space: $partitions_name = $usedspace $metric (used $usedspace$metric, total $totalspace$metric) |$partitions_name=$usedspace$metric;$opt_w;$opt_c;0;$totalspace\n";
+            exit 1;
+            }
+
+            if ($usedspace < $opt_w)
+            {
+            print "Disk OK - used space: $partitions_name = $usedspace $metric (used $usedspace$metric, total $totalspace$metric) |$partitions_name=$usedspace$metric;$opt_w;$opt_c;0;$totalspace\n";
+            exit 0;
+            }
+
+        }
+
+        if ($opt_t eq 'usedproc')
+        {
+            if ($usedproc >= $opt_c)
+            {
+            print "Disk CRITICAL - used %: $partitions_name = $usedproc % (used $usedspace$metric, total $totalspace$metric) |$partitions_name=$usedproc\%;$opt_w;$opt_c;0;100\n";
+            exit 2;
+            }
+
+            if ($usedproc >= $opt_w)
+            {
+            print "Disk WARNING - used %: $partitions_name = $usedproc % (used $usedspace$metric, total $totalspace$metric) |$partitions_name=$usedproc\%;$opt_w;$opt_c;0;100\n";
+            exit 1;
+            }
+
+            if ($usedproc < $opt_w)
+            {
+            print "Disk OK - used %: $partitions_name = $usedproc % (used $usedspace$metric, total $totalspace$metric) |$partitions_name=$usedproc\%;$opt_w;$opt_c;0;100\n";
+            exit 0;
+            }
+
+        }
+
+	print "Disk $partitions_name freespace $freespace usedspace $usedspace totalspace $totalspace \n";
+	print "Disk $partitions_name freeproc $freeproc usedproc $usedproc proctotal 100 \n"; 
+	}
+
+}
+
+sub print_help(){
+        print " This is a multiplatform check for Disk space information. The plugin delivers Used space, Used procentage, Free space, Free procentage information about all partitions.\n";
+        print " Big change is to monitor all partitions without modification of host nrpe config file. On host side we use a command: \n";
+        print " command[check_disk_v2]=/opt/plugins/custom/emca/check_disk_v2 -t <type> -w <warning> -c <critica> -p <partition> \n";
+        print " check_disk is a normal plugin from distro and works in the same way on Linux, Aix, SunOS.\n";
+        print " \n";
+        print " Producer EM&CA S.A. http://it.emca.pl ver 1.2\n";
+        print " Do not use without agreement. \n";
+        print " \n";
+
+        print " $PROGNAME [-h | --help]\n";
+        print " $PROGNAME -t speespace Index -w warining -c critical -p partition \n";
+        print "   Where: \n";
+        print "     -t information type : freespace, freeproc,usedspace, usedproc \n";
+        print "     -p partition to check \n";
+        print "     -w <warning> is the warning treshold that the found value is compared to. \n";
+        print "     -c <critical> is the critical treshold that the found value is compared to. \n";
+        print "\n";
+
+}
+
+
+
+
+
+
+

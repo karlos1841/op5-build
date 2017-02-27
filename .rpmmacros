@@ -1,0 +1,7 @@
+%packager EM&CA S.A. <op5@emca.pl>
+               	%_topdir /root/rpmbuild
+               	%_tmppath %{_topdir}/tmp
+               	%_signature gpg
+               	%_gpgpath /root/.gnupg
+               	%_gpg_name emcabuild <op5@emca.pl>
+               	%_gpgbin /usr/bin/gpg

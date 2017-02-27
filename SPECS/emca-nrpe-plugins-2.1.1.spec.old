@@ -1,0 +1,75 @@
+%define myname emca-nrpe-plugins
+%define version 2.1.1
+%define release 11
+%define nsuser op5
+%define nsgroup op5
+%define nrpeplugin "opt/plugins"
+%define emca_plugins "%{nrpeplugin}/custom/emca"
+%define debug_package %{nil}
+
+Summary: Emca plugins form op5Monitor
+URL: http://it.emca.pl
+Name: %{myname}
+Version: %{version}
+Release: %{release}%{dist}
+License: GPL
+Group: Application/System
+Source: %{myname}-%{version}.tar
+BuildRoot: %{_tmppath}/%{myname}-buildroot
+BuildArch: x86_64
+Requires: nrpe >= 2.15, sed >= 4.1, wget >= 1.10, sysstat >= 8
+%description
+Emca plugins for do not blame nrpe agent
+
+%prep 
+%setup -q -n %{myname}-%{version}
+
+%pre
+
+%preun
+
+%postun
+
+
+%post
+
+if [ -x /etc/init.d/nrpe ]; then
+	/etc/init.d/nrpe stop > /dev/null 2>&1
+	sleep 2
+	/etc/init.d/nrpe start > /dev/null 2>&1
+fi
+
+%build
+
+%install
+[ "$RPM_BUILD_ROOT" != "/" ] && rm -rf $RPM_BUILD_ROOT
+install -d -m 0755 ${RPM_BUILD_ROOT}/opt/plugins/custom/emca
+install -d -m 0755 ${RPM_BUILD_ROOT}/etc/nrpe.d
+
+install -m 0644 ${RPM_SOURCE_DIR}/%{myname}-%{version}/etc/nrpe.d/*.cfg ${RPM_BUILD_ROOT}/etc/nrpe.d/
+
+# plugins
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{nrpeplugin}/check* ${RPM_BUILD_ROOT}/%{nrpeplugin}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{nrpeplugin}/negate ${RPM_BUILD_ROOT}/%{nrpeplugin}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{nrpeplugin}/urlize ${RPM_BUILD_ROOT}/%{nrpeplugin}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{nrpeplugin}/utils.pm ${RPM_BUILD_ROOT}/%{nrpeplugin}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{nrpeplugin}/utils.sh ${RPM_BUILD_ROOT}/%{nrpeplugin}/
+
+# /custom/emca
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{emca_plugins}/check* ${RPM_BUILD_ROOT}/%{emca_plugins}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{emca_plugins}/awk* ${RPM_BUILD_ROOT}/%{emca_plugins}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{emca_plugins}/autoconf.sh ${RPM_BUILD_ROOT}/%{emca_plugins}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{emca_plugins}/if_statistic_err ${RPM_BUILD_ROOT}/%{emca_plugins}/
+install -m 0755 ${RPM_SOURCE_DIR}/%{myname}-%{version}/%{emca_plugins}/self_updater.pl ${RPM_BUILD_ROOT}/%{emca_plugins}/
+
+%clean
+rm -fr $RPM_BUILD_ROOT
+
+%files
+%defattr(0755, %{nsuser}, %{nsgroup})
+%dir /etc/nrpe.d
+/opt/plugins
+/opt/plugins/custom
+/opt/plugins/custom/emca
+%defattr(0644,%{nsuser},%{nsgroup})
+%config() /etc/nrpe.d/*.cfg

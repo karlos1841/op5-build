@@ -1,0 +1,16 @@
+# Modules installed in this order
+default:
+Test-Simple
+Perl-OSType
+Module-Implementation
+Module-Metadata
+version
+Module-Build
+Module-Runtime
+parent
+Try-Tiny
+Params-Validate
+Math-Calc-Units
+Class-Accessor
+Config-Tiny
+Nagios-Plugin

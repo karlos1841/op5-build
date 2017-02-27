@@ -1,0 +1,155 @@
+#!/bin/bash
+
+function print_help() {
+	echo "This plugins check memory information ( in Kb)"
+	echo "On nrpe agent we use a command:"
+	echo -e "\tcommand[check_memory_usage]=/opt/plugins/custom/emca/check_memory_usage -U -w <warning> -c <critical>"
+	echo -e "\tcommand[check_memory_usage_proc]=/opt/plugins/custom/emca/check_memory_usage -U -M % -w <warning> -c <critical>"
+	echo -e "\tcommand[check_free_memory]=/opt/plugins/custom/emca/check_memory_usage -F -w <warning> -c <critical>"
+	echo -e "\tcommand[check_free_memory_proc]=/opt/plugins/custom/emca/check_memory_usage -F -M % -w <warning> -c <critica>"
+	echo -e "\n";
+	echo "check_memory_usage is normal script and should work on Linux,Aix and Solaris"
+	echo -e "\n"
+	echo "Producer: EM&CA S.A <op5@emca.pl> Web: http://it.emca.pl"
+	echo "Do not use without agreement"
+	echo -e "\n"
+	echo "Usage:"
+	echo "$0 -h"
+	echo "$0 [-U|-F] [-M %] -w <warning> -c <critical>"
+	echo -e "\n"
+	echo -e "-U\tUsed Memory"
+	echo -e "-F\tFree Memory"
+	echo -e "-M\tMetric ( MB|%) Default: MB"
+	echo -e "-w\tWarning threshold"
+	echo -e "-c\tCritical threshold"
+
+	exit 3
+}
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		-F) opt=1;;	# free Memory
+		-U) opt=2;;	# used Memory
+		-M) metric=$2;; # metrica MB or %
+		-w) warning=$2;; # warning
+		-c) critical=$2;; #critical
+		-d) debug=1;;	# debug
+		-h) print_help;;
+	esac
+	shift
+done
+
+if [[ -z "$debug" ]]; then
+	debug=0
+fi
+
+if [[ -z "$metric" ]]; then
+	metric="MB";
+fi
+
+
+osName=`uname`
+
+if [ $debug -eq 1 ]; then
+	echo "--- debug start --"
+	echo "Params: free=$opt used=$opt metric=$metric warning=$warning critical=$critical"
+	echo "--- debug stop ---"
+fi
+
+if [ "$osName" == "Linux" ]; then
+	totalMemory=`free -m|grep "Mem"|awk '{print $2}'` # in MB
+	usedMemory=`free -m|grep "cache:" | awk '{print $3}'` # in MB
+	freeMemory=`free -m| grep "cache:" | awk '{print $4 }'` # in MB
+elif [ "$osName" == "SunOS" ]; then
+	totalMemory=`echo "::memstat"|sudo mdb -k|grep "Total"|awk '{print $3}'`
+	usedMemory=`echo "::memstat"|sudo mdb -k|grep "freelist"|awk '{print $4}'`
+	freeMemory=`expr $totalMem - $freeMem`
+else 
+	totalMemory=`lsattr -El sys0 -a realmem|awk '{ print $2}'` # in Kb
+	totalMemory=`echo "$totalMemory/1024"|bc`		# in MB
+	usedMemory=`svmon -G|head -2|tail -1|awk '{print $3}'` 	   # in Kb
+	usedMemory=`echo "$usedMemory*4/1024"|bc`		# in MB
+	freeMemory=`echo "$totalMemory-$usedMemory"|bc`		   # in MB
+fi
+
+if [ "$metric" == "%" ]; then
+	usedMemoryProc=`echo "scale=2;$usedMemory*100/$totalMemory" | bc -l`
+	freeMemoryProc=`echo "scale=2;$freeMemory*100/$totalMemory" | bc -l`
+fi
+
+if [ $debug -eq 1 ]; then
+	echo "--- debug start ---"
+	echo "totalMemory: $totalMemory | usedMemory: $usedMemory | freeMemory: $freeMemory | usedMemoryProc: $usedMemoryProc | freeMemoryProc: $freeMemoryProc"
+	echo "--- debug  stop ---"
+fi
+
+
+if [ "$metric" == "MB" ]; then
+	case $opt in
+		1)	# Free Memory in MB
+			if [ $freeMemory -lt $critical ]; then
+				MSG="Free Mem CRITICAL - $freeMemory$metric : (Total: $totalMemory$metric, Used: $usedMemory$metric, Free: $freeMemory$metric) | free_memory=$freeMemory$metric;$warning;$critical;0;$totalMemory"
+				STATUS=2
+			elif [ $freeMemory -lt $warning ]; then
+				MSG="Free Mem WARNING - $freeMemory$metric: (Total: $totalMemory$metric, Used: $usedMemory$metric, Free: $freeMemory$metric) | free_memory=$freeMemory$metric;$warning;$critical;$totalMemory"
+				STATUS=1
+			else
+				MSG="Free Mem OK - $freeMemory$metric: (Total: $totalMemory$metric, Used: $usedMemory$metric, Free: $freeMemory$metric) | free_memory=$freeMemory$metric;$warning;$critical;$totalMemory"
+				STATUS=0
+			fi
+		;; 
+		2) 	# Used Memory in MB
+			if [ $usedMemory -gt $critical ]; then
+				MSG="Mem Used CRITICAL - $usedMemory$metric : (Total: $totalMemory$metric, Used: $usedMemory$metric, Free: $freeMemory$metric) | used_memorymb=$usedMemory$metric;$warning;$critical;0;$totalMemory"
+				STATUS=2
+			elif [ $usedMemory -gt $warning ]; then
+				MSG="Mem Used WARNING - $usedMemory$metric : (Total: $totalMemory$metric, Used: $usedMemory$metric, Free: $freeMemory$metric) | used_memorymb=$usedMemory$metric;$warning;$critical;0;$totalMemory"
+				STATUS=1
+			else
+				MSG="Mem Used OK - $usedMemory$metric : (Total: $totalMemory$metric, Used: $usedMemory$metric, Free: $freeMemory$metric) | used_memorymb=$usedMemory$metric;$warning;$critical;0;$totalMemory"
+				STATUS=0
+			fi
+		;;
+	esac
+elif [ "$metric" == "%" ]; then
+	case $opt in 
+		1)	# Free Memory in %
+			if [ `echo "$freeMemoryProc<=$critical"|bc` -eq 1 ]; then
+				MSG="Free Mem CRITICAL - $freeMemoryProc$metric : (Used: $usedMemoryProc$metric, Free: $freeMemoryProc$metric) | free_memoryproc=$freeMemoryProc$metric;$warning;$critical"
+				STATUS=2
+			elif [ `echo "$freeMemoryProc<=$warning"|bc` -eq 1 ]; then
+				MSG="Free Mem WARNING - $freeMemoryProc$metric : (Used: $usedMemoryProc$metric, Free: $freeMemoryProc$metric) | free_memoryproc=$freeMemoryProc$metric;$warning;$critical"
+				STATUS=1
+			else
+				MSG="Free Mem OK - $freeMemoryProc$metric : (Used: $usedMemoryProc$metric, Free: $freeMemoryProc$metric) | free_memoryproc=$freeMemoryProc$metric;$warning;$critical"
+				STATUS=0
+			fi
+		;;
+		2)	# Used Memory in %
+			if [ `echo "$usedMemoryProc>=$critical"|bc` -eq 1 ]; then
+				MSG="Mem Used CRITICAL - $usedMemoryProc$metric : (Used: $usedMemoryProc$metric, Free: $freeMemoryProc$metric) | used_memoryproc=$usedMemoryProc$metric;$warning;$critical"
+				STATUS=2
+			elif [ `echo "$usedMemoryProc>=$warning"|bc` -eq 1 ]; then
+				MSG="Mem Used WARNING - $usedMemoryProc$metric : (Used: $usedMemoryProc$metric, Free: $freeMemoryProc$metric) | used_memoryproc=$usedMemoryProc$metric;$warning;$critical"
+				STATUS=1
+			else
+				MSG="Mem Used OK - $usedMemoryProc$metric : (Used: $usedMemoryProc$metric, Free: $freeMemoryProc$metric) | used_memoryproc=$usedMemoryProc$metric;$warning;$critical"
+				STATUS=0
+			fi
+		;;
+	esac
+fi
+
+
+if [ $debug -eq 1 ]; then
+	echo "--- debug start --"
+	echo "Message: $MSG"
+	echo "STATUS: $STATUS"
+	echo "--- debug stop ---"
+fi
+
+
+
+echo $MSG
+exit $STATUS
+

@@ -1,0 +1,70 @@
+#!/bin/bash
+
+function print_help() {
+
+	echo -e "This is a check_mount plugin."
+	echo -e "On NRPE Agent we use a command:"
+	echo -e "\tcommand[check_mount]=/opt/plugins/custom/emca/check_mount -p \$ARG1\$ -t \$ARG2\$"
+	echo -e "check_mount is a plugin for RHEL systems"
+	echo -e "\n"
+	echo -e "Producer EM&CA S.A http://it.emca.pl <op5@emca.pl>"
+	echo -e "Do not use without agreement"
+	echo -e "\n"
+	echo -e "$0 -h"
+	echo -e "$0 -p <mount_pount> [ -t <timeout> ]"
+	echo -e "Where:"
+	echo -e "\t-h\t\tprint help"
+	echo -e "\t-t\t\ttimout ( default: 5 )"
+	echo -e "\t-p\t\tmount point"
+	echo -e "\n"
+
+	exit 0
+}
+
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		-h) print_help;;	# print help
+		-t) timeout=$2;;	# timeout for command
+		-p) mountPoint=$2;;	# mount point
+	esac
+	shift
+done
+
+OS_TYPE=`uname`
+
+if [ -z $mountPoint ]; then
+	echo "Enter the mount point"
+	exit 3
+fi
+
+if [ -z $timeout ]; then
+	timeout=5
+fi
+
+#t=`mount|grep $mountPoint`
+t=`cat /proc/mounts | grep $mountPoint | awk '{print $2 }'`
+if [ -z "$t" ]; then
+        echo "CRITICAL - Filesystem $mountPoint is not mounted"
+        exit 2
+fi
+
+if [ $OS_TYPE == "Linux" ]; then
+	STAT="stat -t"
+elif [ $OS_TYPE == "AIX" ]; then
+	STAT="istat"
+else
+	echo "Not supported OS";
+	exit 3
+fi
+
+read -t $timeout < <($STAT $mountPoint 2>/dev/null)
+
+if [ $? -eq 0 ]; then
+	echo "OK - Filesystem $mountPoint mounted"
+	exit 0
+else
+	echo "CRITICAL - Filesystem $mountPoint is not mounted"
+	exit 2
+fi
+

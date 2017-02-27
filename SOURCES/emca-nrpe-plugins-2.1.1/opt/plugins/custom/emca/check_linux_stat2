@@ -1,0 +1,171 @@
+#!/bin/bash
+#set -x
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		-C) cpu=1;;
+		-M) mem=1;;
+		-W) pages=1;;
+		-F) pagesFault=1;;
+		-I) io=1;;
+		-N) net=1;;
+		--name) NAME=$2;;
+		-P) procs=1;;
+		-S) swap=1;;
+		-H|-h|--help) help; exit 3;;
+	esac
+	shift
+done
+status=""
+
+distr=`uname`
+
+function check_cpuusage() {
+	result=`vmstat | tail -1`
+	if [ $distr == "Linux" ] || [ $distr == "AIX" ]; then
+		result=`mpstat|tail -1`
+		user=`echo $result|awk '{print $3}'`
+		nice=`echo $result|awk '{print $4}'`
+		system=`echo $result|awk '{print $5}'`
+		idle=`echo $result|awk '{print $10}'`
+		_wait=`vmstat|tail -1|awk '{print $16}'`
+		echo "user=$user nice=$nice system=$system idle=$idle wait=$_wait"
+	elif [ $distr == "AIX" ]; then
+		result=`mpstat|tail -1`
+		user=`echo $result|awk '{print $3}'`
+		system=`echo $result|awk '{print $5}'`
+		idle=`echo $result|awk '{print $10}'`
+		_wait=`vmstat|tail -1|awk '{print $16}'`
+		echo "user=$user system=$system idle=$idle wait=$_wait"
+	elif [ $distr == "SunOS" ]; then
+		result=`vmstat | tail -1`
+		user=`echo $result|awk '{print $20}'`
+		system=`echo $result|awk '{print $21}'`
+		idle=`echo $result|awk '{print $2}'`
+		echo "user=$user system=$system idle=$idle"
+	fi
+
+	
+}
+
+function check_memory {
+	if [ $distr == "Linux" ]; then
+		totalMem=`vmstat -s|grep "total memory"|tr -d [:alpha:]|tr -d [:space:]`
+		usedMem=`vmstat -s|grep "used memory"|tr -d [:alpha:]|tr -d [:space:]`
+		activeMem=`vmstat -s|grep "active memory"|grep -v "in"|tr -d [:alpha:]|tr -d [:space:]`
+		inactiveMem=`vmstat -s|grep "inactive memory"|tr -d [:alpha:]|tr -d [:space:]`
+		freeMem=`vmstat -s|grep "free memory"|tr -d [:alpha:]|tr -d [:space:]`
+		#freeMem=`free -k| grep "cache:" | awk '{print $4 }'`
+		bufferMem=`vmstat -s|grep "buffer memory"|tr -d [:alpha:]|tr -d [:space:]`
+		swapCached=`vmstat -s|grep "swap cache"|tr -d [:alpha:]|tr -d [:space:]`
+		swapUsed=`vmstat -s|grep "used swap"|tr -d [:alpha:]|tr -d [:space:]`
+		swapTotal=`vmstat -s|grep "total swap"|tr -d [:alpha:]|tr -d [:space:]`
+
+		
+		echo "total_memory=$totalMem used_memory=$usedMem active_memory=$activeMem inactive_memory=$inactiveMem free_memory=$freeMem buffer=$bufferMem swap_cached=$swapCached used_swap=$swapUsed total_swap=$swapTotal"
+	
+	elif [ $distr == "AIX" ]; then
+		usedMem=`svmon -G|head -2|tail -1|awk '{print $3}'`
+		usedMem=`expr $usedMem / 256`
+		totalMem=`lsattr -El sys0 -a realmem|awk '{ print $2}'`
+		totalMem=`expr $totalMem / 1024`
+		freeMem=`expr $totalMem - $usedMem`
+	
+		echo "total_memory=$totalMem used_memory=$usedMem free_memory=$freeMem"
+		
+	elif [ $distr == "SunOS" ]; then
+		echo ""	
+	fi
+}
+
+function check_pages() {
+	if [ $distr == "Linux" ]; then
+		paged_in=`vmstat -s|grep "paged in"|tr -d [:alpha:]|tr -d [:space:]`
+		paged_out=`vmstat -s|grep "paged out"|tr -d [:alpha:]|tr -d [:space:]`
+		swapped_in=`vmstat -s|grep "swapped in"|tr -d [:alpha:]|tr -d [:space:]`
+		swapped_out=`vmstat -s|grep "swapped out"|tr -d [:alpha:]|tr -d [:space:]`
+		
+		echo "pages_paged_in=$paged_in pages_paged_out=$paged_out pages_swapped_in=$swapped_in pages_swapped_out=$swapped_out"
+		
+	elif [ $distr == "AIX" ]; then
+		pi=`vmstat|tail -n +7|awk '{print $6}'`
+		po=`vmstat|tail -n +7|awk '{print $7}'`
+		fr=`vmstat|tail -n +7|awk '{print $8}'`
+		sr=`vmstat|tail -n +7|awk '{print $9}'`
+		cy=`vmstat|tail -n +7|awk '{print $10}'`
+		echo "pi=$pi po=$po fr=$fr sr=$sr cy=$cy"
+	fi
+	
+
+}
+
+function check_disk_io() {
+	if [ $distr == "Linux" ]; then
+		message=""
+		p=`tail -n +4 /proc/partitions|awk '{print $4}'`
+		for i in $p; do
+		
+			reads=`vmstat -p $i|tail -1|awk '{print $1}'`
+			read_sectors=`vmstat -p $i|tail -1|awk '{print $2}'`
+			writes=`vmstat -p $i|tail -1|awk '{print $3}'`
+			requested_writes=`vmstat -p $i|tail -1|awk '{print $4}'`
+
+			message="$message $i:reads=$reads $i:read_sectors=$read_sectors $i:writes=$writes $i:requested_writes=$requested_writes"
+	
+		done
+		echo $message
+	elif [ $distr == "AIX" ]; then
+		echo "hello AIX"
+	fi
+}
+
+function check_network_stats() {
+	if [ $distr == "Linux" ]; then
+
+		#result=`netstat -i|tail -n +3|awk '{ printf "%s rx_ok=%s rx_err=%s rx_drp=%s rx_ovr=%s tx_ok=%s tx_err=%s tx_drp=%s tx_ovr=%s\n",$1, $4, $5, $6, $7, $8, $9, $10, $11}'`
+		result=`netstat -i|tail -n +3|awk '{ printf "%s:rx_ok=%s %s:rx_err=%s %s:rx_drp=%s %s:rx_ovr=%s %s:tx_ok=%s %s:tx_err=%s %s:tx_drp=%s %s:tx_ovr=%s\n",
+		$1, $4, $1, $5, $1, $6, $1, $7, $1, $8, $1, $9, $1, $10, $1, $11}'`
+		echo $result
+	
+	fi
+}
+
+function check_procs() {
+echo ""
+}
+
+function check_swap() {
+	echo "";
+}
+
+
+function check_pages_fault() {
+
+	pgfault_minor=`cat /proc/vmstat | grep pgfault|tr ' ' '='`
+	pgfault_major=`cat /proc/vmstat | grep pgmajfault|tr ' ' '='`
+
+	echo "$pgfault_minor $pgfault_major"
+}
+
+
+function help() {
+echo 
+}
+
+if [ -n "$cpu" ]; then
+	check_cpuusage
+elif [ -n "$mem" ]; then
+	check_memory
+elif [ -n "$pages" ]; then
+	check_pages
+elif [ -n "$pagesFault" ]; then
+	check_pages_fault
+elif [ -n "$io" ]; then
+	check_disk_io
+elif [ -n "$net" ]; then
+	check_network_stats
+elif [ -n "$procs" ]; then
+	check_procs
+elif [ -n "$swap" ]; then
+	check_swap
+fi

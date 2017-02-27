@@ -1,0 +1,22 @@
+#!/bin/bash
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		-w) warning=$2;;
+		-c) critical=$2;;
+	esac
+	shift
+done
+
+result=`/opt/plugins/check_procs -s Z|awk '{print $3}'`
+
+if [ $result -ge $critical ]; then
+	echo "Zombie Procs ERROR: zombie=$result|zombie=$result;$warning;$critical"
+	exit 2
+elif [ $result -ge $warning ]; then
+	echo "Zombie Procs WARNING: zombie=$result|zombie=$result;$warning;$critical"
+	exit 1
+else
+	echo "Zombie Procs OK: zombie=$result|zombie=$result;$warning;$critical"
+	exit 0
+fi

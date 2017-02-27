@@ -1,0 +1,186 @@
+#!/usr/bin/perl
+#
+
+# use strict;
+use lib "/opt/plugins";
+use utils qw (%ERRORS $TIMEOUT);
+use Getopt::Long;
+my $VERSION      = "0.1";
+
+
+my $RETURN ="5";
+my @ret;
+my @line;
+my ($opt_h, $opt_w, $opt_c,$opt_d, $opt_read, $opt_write, $opt_tps,$opt_avg, $opt_avgqu);
+
+Getopt::Long::Configure("bundling");
+$result=GetOptions(
+        "h" => \$opt_h, "help" => \$opt_h,
+	"d=s" => \$opt_d, "DEVICE=s" => \$opt_d,
+        "w=f" => \$opt_w, "warning=f" => \$opt_w,
+        "c=f" => \$opt_c, "critical=f" => \$opt_c,
+	"r" => \$opt_read, "read" => \$opt_read,
+	"x" => \$opt_write, "write" => \$opt_write,
+	"a" => \$opt_tps, "tps" => \$opt_tps,
+	"g" => \$opt_avg, "avg" => \$opt_avg,
+	"i" => \$opt_avgqu, "avgqu-sz" => \$opt_avgqu);
+
+
+if(! $result) {
+        exit $ERRORS{'UNKNOWN'};
+}
+
+if ( $opt_h ) {
+        print_help();
+        exit $ERRORS{'OK'};
+}
+
+
+my $cmd="iostat $opt_d 1 3|grep $opt_d|tail -1";
+my $cmd2="iostat -x $opt_d 1 3|grep $opt_d|tail -1";
+
+$_ = `$cmd`;
+if($?) {
+        printf("ERROR: No data received from management host.");
+        exit($ERRORS{'CRITICAL'});
+}
+$return=$_;
+@all = split(" ",$return);
+chomp(@all);
+chomp($opt_w);
+chomp($opt_c);
+
+$_ = `$cmd2`;
+if($?) {
+	printf("ERROR: No data received from management host.");
+	exit($ERRORS{'CRITICAL'});
+}
+$return=$_;
+@all2 = split(" ",$return);
+chomp(@all2);
+
+my $status = $ERRORS{'UNDEFINED'};
+
+if($opt_read) {
+	if($all[2] >= $opt_c) {
+
+		printf "Read (Kb/s): %s CRITICAL read=%s|read=%s;%s;%s", $opt_d, $all[2],$all[2], $opt_w, $opt_c;
+		exit $ERRORS{'CRITICAL'};
+	}
+	elsif($all[2] >= $opt_w) {
+		
+		printf "Read (Kb/s): %s WARNING read=%s|read=%s;%s;%s", $opt_d, $all[2], $all[2], $opt_w, $opt_c;
+		exit $ERRORS{'WARNING'};
+	}
+	else {
+		printf "Read (Kb/s): %s OK read=%s|read=%s;%s;%s", $opt_d, $all[2],$all[2], $opt_w, $opt_c;
+		exit $ERRORS{'OK'};
+	}
+}
+if($opt_write) {
+
+        if($all[3] >= $opt_c) {
+
+                printf "Write (Kb/s): %s CRITICAL write=%s|write=%s;%s;%s", $opt_d, $all[3],$all[3], $opt_w, $opt_c;
+                exit $ERRORS{'CRITICAL'};
+        }
+        elsif($all[3] >= $opt_w) {
+
+                printf "Write (Kb/s): %s WARNING write=%s|write=%s;%s;%s", $opt_d, $all[3], $all[3], $opt_w, $opt_c;
+                exit $ERRORS{'WARNING'};
+        }
+        else {
+                printf "Write (Kb/s): %s OK write=%s|write=%s;%s;%s", $opt_d, $all[3], $all[3], $opt_w, $opt_c;
+                exit $ERRORS{'OK'};
+        }
+}
+
+if($opt_tps) {
+
+        if($all[1] >= $opt_c) {
+
+                printf "Transactions (operations/s): %s CRITICAL tps=%s|tps=%s;%s;%s", $opt_d, $all[1],$all[1], $opt_w, $opt_c;
+                exit $ERRORS{'CRITICAL'};
+        }
+        elsif($all[1] >= $opt_w) {
+
+                printf "Transactions (operations/s): %s WARNING tps=%s|tps=%s;%s;%s", $opt_d, $all[1], $all[1], $opt_w, $opt_c;
+                exit $ERRORS{'WARNING'};
+        }
+        else {
+                printf "Transactions (operations/s): %s OK tps=%s|tps=%s;%s;%s", $opt_d, $all[1], $all[1], $opt_w, $opt_c;
+                exit $ERRORS{'OK'};
+        }
+
+}
+
+if($opt_avg) {
+	if($all2[9] >= $opt_c) {
+		printf "Average time read/write: %s CRITICAL: await=%s|await=%s;%s;%s", $opt_d, $all2[9], $all2[9], $opt_w, $opt_c;
+		exit $ERRORS{'CRITICAL'};
+	}
+	elsif($all2[9] >= $opt_w) {
+		printf "Average time read/write: %s WARNING: await=%s|await=%s;%s;%s", $opt_d, $all2[9], $all2[9], $opt_w, $opt_c;
+		exit $ERRORS{'WARNING'};
+	}
+	else {
+		printf "Average time read/write: %s OK: await=%s|await=%s;%s;%s", $opt_d, $all2[9], $all2[9], $opt_w, $opt_c;
+		exit $ERRORS{'OK'};
+	}
+}
+
+if($opt_avgqu) {
+	
+	if($all2[8] >= $opt_c) {
+		printf "The average queue length of the requests that were issued to the device: %s CRITICAL: avgqu-sz=%s%s|avgqu-sz=%s%s;%s;%s",
+			$opt_d, $all2[8], "", $all2[8], "", $opt_w, $opt_c;
+		exit $ERRORS{'CRITICAL'};
+	}
+	elsif($all2[8] >= $opt_w) {
+		printf "The average queue length of the requests that were issued to the device: %s WARNING: avgqu-sz=%s%s|avgqu-sz=%s%s;%s;%s",
+			$opt_d, $all2[8], "", $all2[8], "", $opt_w, $opt_c;
+		exit $ERRORS{'WARNING'};
+	}
+	else {
+		printf "The average queue length of the requests that were issued to the device: %s OK: avgqu-sz=%s%s|avgqu-sz=%s%s;%s;%s",
+			$opt_d, $all2[8], "", $all2[8], "", $opt_w, $opt_c;
+		exit $ERRORS{'OK'};
+	}
+}
+
+sub print_help(){
+        print " This is a check for disk io operations. The plugin delivers Read(Kb/s), Write(Kb/s), Transactions (operations/s), Average time read/write, Average queue length  information about all disks.\n";
+        print " Big change is to monitor all partitions without modification of host nrpe config file. On host side we use a command: \n";
+        print " command[read_io]=/opt/plugins/custom/emca/check_io_stat -r -d $ARG1$ -w $ARG2$ -c $ARG3$ \n";
+        print " command[write_io]=/opt/plugins/custom/emca/check_io_stat -w -d $ARG1$ -w $ARG2$ -c $ARG3$ \n";
+        print " command[tps_io]=/opt/plugins/custom/emca/check_io_stat -a -d $ARG1$ -w $ARG2$ -c $ARG3$ \n";
+        print " command[avg_io]=/opt/plugins/custom/emca/check_io_stat -g -d $ARG1$ -w $ARG2$ -c $ARG3$ \n";
+        print " command[avgqusz_io]=/opt/plugins/custom/emca/check_io_stat -i -d $ARG1$ -w $ARG2$ -c $ARG3$ \n";
+        print " check_io_stat is a normal plugin from distro and works on Linux.\n";
+        print " \n";
+        print " Producer EM&CA S.A. http://it.emca.pl ver 1.0\n";
+        print " Do not use without agreement. \n";
+        print " \n";
+
+        print " $PROGNAME [-h | --help]\n";
+        print " $PROGNAME [-r|-w|-a|-g|-i|-h] -w <warining> -c <critical>  \n";
+        print "\tWhere: \n";
+	print "\t\t-d Device name\n";
+	print "\t\t-r Reads (Kb/s)\n";
+	print "\t\t-w Writes (Kb/s)\n";
+	print "\t\t-a Transactions ( operations/s)\n";
+	print "\t\t-g Average time read/write\n";
+	print "\t\t-i Average queue length\n"; 
+        print "\t\t-w <warning> is the warning treshold that the found value is compared to. \n";
+        print "\t\t-c <critical> is the critical treshold that the found value is compared to. \n";
+        print "\n";
+
+}
+
+sub trim($) {
+
+	my $string = shift;
+	$string =~ s/^\s+//;
+	$string =~ s/\s+$//;
+	return $string;
+}

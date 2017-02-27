@@ -1,0 +1,23 @@
+#!/bin/bash
+
+while [ $# -gt 0 ]; do
+	case $1 in
+		-w) warning=$2;;
+		-c) critical=$2;;
+	esac
+	shift
+done
+
+result=`w|egrep -v 'users|USER'|wc -l`
+
+if [ $result -ge $critical ]; then
+	echo "User sessions: CRITICAL users_sessions=$result | user_sessions=$result"
+	exit 2
+elif [ $result -ge $warning ]; then
+	echo "User sessions: WARNING users_sessions=$result | user_sessions=$result"
+	exit 1
+else
+	echo "User sessions: OK: user_sessions=$result | user_sessions=$result"
+	exit 0
+fi
+
